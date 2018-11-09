@@ -82,7 +82,7 @@ Loop
     cmp #$80 ;compare with the last address we want to write
     bne Loop ;if we're not there yet, loop
     
-    lda #$0f
+    lda #$0f  ; drive number selector (8-30)
     sta $030C
     lda #$cf
     sta $030d 
