@@ -2771,7 +2771,7 @@ disk_load
       CPX #$50    ; P
       BNE $76C6
       LDX $6002   ; dir_access    if  not open
-      BEQ $76C8   ; do_load
+      BEQ do_load ; do_load
       LDA #$3C    ; file_open error
       
 ;      !byte $2c
@@ -2805,6 +2805,7 @@ disk_load
 ;     c=1 verck <> 0  verify error
 ;     c=1 verck = 0 out of mem error ( $ff00 )
 ;
+do_load
       JSR $F5D2
       JSR $66D7
       LDA $C3
