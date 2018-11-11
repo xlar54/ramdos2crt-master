@@ -199,12 +199,6 @@ code_start = swapped_dos_base+$300
 swapped_code_start = swapped_dos_base
 swapped_code_size = $1fff
 
-curzpg  = $fe
-curram  = swapped_dos_base
-code_start = swapped_dos_base+$300
-swapped_code_start = swapped_dos_base
-swapped_code_size = $1fff
-
 * = swapped_dos_base
 data_block
 !fill 256, $00
@@ -476,7 +470,7 @@ l630f   LDX #$00
 l_10    TXA 
         PHA 
         LDA l6321,X
-        JSR $E716
+        JSR print
         PLA 
         TAX 
         INX 
@@ -688,8 +682,14 @@ l64A8 CLC
       LDX #$00
       LDA ($FE,X)
       RTS 
-
-
+;******************************************************************
+;   SELECT_CHANNELS
+;******************************************************************
+;
+num_channels = 17
+directory_channel = 16
+;
+init_channels
       LDX #$10
       TXA 
       JSR $663F
@@ -699,7 +699,7 @@ l64A8 CLC
       BPL $661F
       RTS 
 
-
+clear_channel   ; set all channel data to zero
       LDX #$0F
       LDA #$00
       STA $610B,X
@@ -707,10 +707,15 @@ l64A8 CLC
       BPL $6631
       RTS 
 
-
+select_channel_given_sa
       LDA $B9
       AND #$0F
-      BIT $10A9
+      !byte $2c
+;
+select_dir_channel
+      lda #16
+      
+select_channel_a
       CMP $6108
       BEQ $6670
       PHA 
@@ -772,7 +777,7 @@ l64A8 CLC
       CPX $611C
       BNE $66C3
       CMP $611B
-      BEQ $66EB
+      BEQ access_block_ret
       PHA 
       TXA 
       PHA 
@@ -782,6 +787,7 @@ l64A8 CLC
       PLA 
       STA $611B
       STX $611C
+unflush_block   ; read the new default block in.
       LDY #$B1
       BIT $B0A0
       JSR $66ED
@@ -790,10 +796,11 @@ l64A8 CLC
       STA $DF05
       JSR $7EB7
       STY $DF01
+access_block_ret
       CLC 
       RTS 
 
-
+dma_data_block_setup    ; set up dma controller for data block
       LDX #$0A
       LDA $66F9,X
       STA $DF02,X
@@ -802,6 +809,13 @@ l64A8 CLC
       RTS 
 
       !byte $00, $60, $00,$00,$00,$00,$01,$00,$00,$00,$00
+      
+;**************************************************************************
+;   READ BYTE
+;**************************************************************************
+;
+;
+read_byte_given_sa      
       JSR $6638
       CMP #$0F
       BNE $670E
@@ -815,6 +829,7 @@ l64A8 CLC
       CPX #$24
       BNE $673A
       JMP $7458
+read_byte_default_cleanup
       TAY 
       BEQ $6739
       CLC 
@@ -826,8 +841,11 @@ l64A8 CLC
       INC $6110
       JSR $66D4
       RTS 
-
-
+;
+;
+;
+read_byte_default
+;
       LDA $610B
       CMP #$52
       BEQ $6751
@@ -866,6 +884,11 @@ l64A8 CLC
       LDX #$67
       SEC 
       JMP $7AC7
+;**************************************************************************
+;   WRITE_BYTE
+;**************************************************************************
+;
+write_byte_given_sa
       JSR $6638
       CMP #$0F
       BNE $6792
@@ -901,6 +924,10 @@ l64A8 CLC
       BNE $67D7
       INC $6110
       JMP $66D4
+;
+;
+write_byte_default
+;
       JSR $67FB
       BCS $67EA
       LDA #$00
@@ -918,6 +945,16 @@ l64A8 CLC
       LDX #$67
       CLC 
       JMP $7AC7
+;
+;
+; write_byte_immediate
+;   writes data byte to current file at current file pointer
+;   also may make an effort to expand the file. If file expansion
+;   must take place, any expansion area is filled withg $FFs.
+;
+;
+write_byte_immediate
+;       while current_byte > end_byte
       LDA $6113
       CMP $6110
       BNE $6811
@@ -979,7 +1016,82 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;**************************************************************************
+;   REL FILES
+;**************************************************************************
+;
+;directory:
+; dir_record_len    1 record length
+; dir_end_record    2 number of records we have
+;
+;channel  current_record    2 current record number
+; current_record_byte 1 position in current record
+; current_record_len  1 length of current record
+; rel_write_flag    1 write flag...
+; record_len    1 length of physical record
+; end_record    2 maximum record number written
+;
+;access_record
+; current_block/byte <= address of current_record,current_record_byte
+;;
+;add_record
+; adds one record to end of file
+; $ff plus nulls
+;;
+;fill_record
+; fills current record from current byte to end of record with nulls.
+; this may be a nop if current record is full
+;;
+;scan_record
+; returns number of bytes in current record.
+; this involves scanning the record.
+;
+;;; read_byte_rel
+;;  always returns current byte ( even if past end of record )
+;;  if past (conceptual )end of record
+;;    will return nulls to end of physical record before eof
+;;  otherwise will return bytes until EOF.
+;;  at time EOF is returned, read_byte_rel will advance current record
+;;  to start of succedding record.
+;;
+;; write_byte_rel
+;;  if  record not present
+;;    add records as neccesary
+;;    if  error
+;;      let user know about problem ( disk full ! )
+;;  if  record is not full
+;;    writes bytes at current record until record full.
+;;  else
+;;    returns record overflow error
+;;
+;; position command
+;;  if  channel is not open
+;;    no channel error
+;;  if  not relative file
+;;    complain
+;;  set record number
+;;  current_record_byte <= 0
+;;  if  record length specified
+;;    if  greater than max
+;;      puke record_overflow
+;;    else
+;;      set current_record_byte
+;;  if  record not present
+;;    return record_not_present_error
+;;
+;;
+;
+;
+; access_record
+;
+; sets current byte to point at area in current record/current_record_byte
+;
+; returns error if record not present
+;
+;
+;  ram access_record_temp,3
+access_record 
+;       current_block <= start of file+current_record_byte
       CLC 
       LDA #$1A
       ADC $6114
@@ -1009,7 +1121,6 @@ l64A8 CLC
       STX $6110
       LDA #$34
       RTS 
-
 
       LDA #$00
       STA $6172
@@ -1069,8 +1180,11 @@ l64A8 CLC
       STX $6116
       TYA 
       RTS 
-
-
+;
+;
+;
+;
+;
       LDA $6118
       LDX $6119
       CPX #$FF
@@ -1099,7 +1213,16 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+;
+;
+; pad_record  fills out remainder of record with nulls
+;
+;     NOTE: current_block/byte must be aligned with
+;           current_record/current_record_byte before
+;           using this routine. ( This can be done by
+;           calling access_record first.
+;
+pad_record    ; fills out remainder of record with nulls
       LDA $6114
       CMP $611A
       BCS $6992
@@ -1111,8 +1234,9 @@ l64A8 CLC
       BNE $697B
       CLC 
       RTS 
-
-
+;
+;
+scan_record
       LDA $6114
       PHA 
       LDA #$00
@@ -1147,7 +1271,7 @@ l64A8 CLC
       TYA 
       RTS 
 
-
+read_a_byte_from_the_record
       JSR $688A
       BCS $69E9
       JSR $66B5
@@ -1155,9 +1279,20 @@ l64A8 CLC
       LDA $6000,X
       CLC 
       RTS 
-
-
-      JSR $6A04
+;
+;
+;
+; read_byte_rel
+; always returns current byte ( even if past end of record )
+; if past (conceptual )end of record
+;   will return nulls to end of physical record before eof
+; otherwise will return bytes until EOF.
+; at time EOF is returned, read_byte_rel will advance current record
+; to start of succedding record.
+;
+cleanup_write_byte_rel
+;       correct current_record_byte
+      JSR cleanup_read_byte_rel
       JSR $688A
       JSR $697B
       BCS $6A02
@@ -1169,11 +1304,13 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+cleanup_read_byte_rel
       CLC 
       ADC $6114
       STA $6114
       JMP $66D4
+;
+read_byte_rel
       LDA #$04
       LDX #$6A
       STA $6109
@@ -1194,6 +1331,9 @@ l64A8 CLC
       INC $6115
       BNE $6A40
       INC $6116
+;
+
+write_byte_rel
       JMP $799A
       CLC 
       JSR $6AA1
@@ -1221,6 +1361,8 @@ l64A8 CLC
       JSR $6AA1
       PLA 
       CLC 
+      
+rel_fastop
       PHP 
       PHA 
       JSR $688A
@@ -1235,6 +1377,10 @@ l64A8 CLC
       PLA 
       PLP 
       JMP $7AE2
+;
+;
+write_byte_rel_flag_carry ;<4.2 fab & hcd>
+;
       LDA $6121
       STA $FF
       LDA #$01
@@ -1245,8 +1391,9 @@ l64A8 CLC
       ROL A
       STA ($FE),Y
       RTS 
-
-
+;
+;
+position_command
       JSR $6D58
       BCS $6B13
       TYA 
@@ -1294,7 +1441,20 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+;**************************************************************************
+;   GROW DISK
+;**************************************************************************
+;
+;  ram swap_block,2
+;  ram swap_delta,2
+; 
+; entry:
+;   x,a lowest block number to shift up by one.
+;     ( if == disk end then disk simply expanded )
+;
+;
+;
+grow_disk
       STA $6173
       STX $6174
       LDA $6102
@@ -1334,8 +1494,10 @@ l64A8 CLC
       JMP $6B49
       CLC 
       RTS 
-
-
+;
+;
+;
+adjust_pointers
       STA $6175
       STX $6176
       LDA $6108
@@ -1372,7 +1534,8 @@ l64A8 CLC
       STX $6103
       CLC 
       RTS 
-
+;
+adjust_pointer
 
       CPX $6174
       BNE $6BD9
@@ -1387,7 +1550,14 @@ l64A8 CLC
       PLA 
       RTS 
 
-
+;************************************************************************
+;   DELETE FILE ( also crushes disk )
+;************************************************************************
+;
+;   delete_file
+;     entry:  data page has directory block on it
+;
+delete_file
       LDA $611B
       LDX $611C
       STA $6173
@@ -1436,7 +1606,11 @@ l64A8 CLC
       BCS $6C16
       RTS 
 
-
+;************************************************************************
+;     UTILITIES
+;************************************************************************
+;
+to_lower
       CMP #$40
       BCC $6C5F
       CMP #$80
@@ -1447,10 +1621,18 @@ l64A8 CLC
       ORA #$40
       CLC 
       RTS 
-
+      
+exptab
       !byte $01,$02,$04,$08
       BPL $6C87
-      RTI 
+      rti
+;************************************************************************
+;   DIRECTORY OPERATIONS
+;************************************************************************
+;
+;   find_a_file_for_open
+;   find_nth_matching_file
+; 
       !byte $80,$20,$3D,$66,$AD,$00,$61,$AE,$01,$61
       STA $610F
       STX $6110
@@ -1484,6 +1666,8 @@ l64A8 CLC
       TAX 
       PLA 
       JMP $6C72
+      
+find_open_file      
       JSR $663D
       LDA $6100
       LDX $6101
@@ -1519,6 +1703,8 @@ l64A8 CLC
       TAX 
       PLA 
       JMP $6CB9
+      
+compare_filenames      
       LDX #$FF
       INX 
       LDA $6008,X
@@ -1530,7 +1716,48 @@ l64A8 CLC
       CLC 
       RTS 
 
+;************************************************************************
+;   OPENS 
+;************************************************************************
+;
+;
+;
+; open:
+;   0-14  <$><:>filename<,<s|p|r>>
+;     <@><<0>:>filename<,<s|p|r>><,<r|w|a|m>>
+;   15 only:
+;     Rename<0<:>>filename=<0<:>>filename
+;     Copy<0<:>>filename=<0<:>>filename
+;     Scratch<0<:>>filename
+;     New<0<:>>filename,idh     <4.1 fab>
+;     Initialize<0<:>>
+;     Validate<0<:>>
+;     P<96+channel_number><record_low><record_high><offset>
+;     UJ:
+;
+;
+; dir_file
+; parse_filename
+; second_filename
+; file_type <p>,<s>,<r>
+; access_type <r>,<w>,<m>,<a>
+; replace_flag
+;
+;
+; ram filename,17
+; ram parse_access,1
+; ram type_char,1
+; ram wild_char,1
+; ram replace_flag,1
+; ram found_flag,1
+;
+;
+;
 
+;************************************************************************
+;   PARSING low level utilities
+;************************************************************************
+;
       LDA $6177,X
       BEQ $6D1B
       CMP $6008,X
@@ -1542,21 +1769,24 @@ l64A8 CLC
       SEC 
       RTS 
 
-
       LDA #$00
       STA $6189
       STA $618A
       STA $618B
       STA $618C
       STA $618D
+      
+init_get_filename
       JSR $7A01
       LDY $B7
       LDA $6191,Y
       LDX #$00
-      BEQ $6D42
+      BEQ igf_really
+init_get_filename_from_command
       LDX #$01
       LDY $6292
       LDA $6292,Y
+igf_really
       CMP #$0D
       BNE $6D47
       DEY 
@@ -1566,12 +1796,13 @@ l64A8 CLC
       STA $618F
       CLC 
       RTS 
-
-
+;
+unget_filename_char
       DEC $618F
       RTS 
 
-
+;
+get_filename_char
       LDY $618F
       CPY $6190
       BCS $6D75
@@ -1585,7 +1816,14 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;
+; classsify_char
+;   entry:  a= char
+;   exit: a = class
+;     y = char
+;     c = 0
+;
+classify_char
       LDX #$07
       CMP $6D95,X
       BEQ $6D84
@@ -1606,11 +1844,30 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+classy_chars
+  ;.byte ' ?*"@=$,'
+  
+;
+;
+; classes 7 6 5 4 3 2 1 0
+; class <comma> <$> <=> <@> <"> <*> <?> < >
+;   
+;
       JSR $2A3F
       !byte $22
       RTI 
       AND $2C24,X
+      
+;************************************************************************
+;   PARSING   mid level calls
+;************************************************************************
+; get_filename
+;   entry:  cur_filename_char = users string
+;   exit: cur_filename_char = advanced
+; get_mod_type
+;   entry:  cur_filename_char = pointer to users string
+;
+get_filename
       LDX #$FF
       INX 
       LDA #$00
@@ -1632,7 +1889,15 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;
+;
+; get_mod_type
+;   entry:  cur_filename_char = pointer to users string
+;   exit: type & access flags set if such is found
+;     things advanced
+;     if  comma found, but not legal mod
+;       routine pukes.
+;
       JSR $6DCC
       JSR $6DCC
       JSR $6D58
@@ -1656,15 +1921,17 @@ l64A8 CLC
       CMP #$41
       BEQ $6E31
       CMP #$46
-      BEQ $6E31
+      BEQ $6E31 ; get access
       CMP #$4C
       BEQ $6E06
-      JSR $6D54
-      JSR $6D54
+      JSR $6D54 ; unget_filename_char
+      JSR $6D54 ; unget_filename_char
       CLC 
       RTS 
 
-
+;
+  ;.ifdef rel_flag
+get_rel_length
       JSR $6E28
       BCS $6E24
       JSR $6D58
@@ -1675,7 +1942,7 @@ l64A8 CLC
       BCS $6E24
       STY $618D
       JMP $6E37
-      JSR $6D54
+      JSR $6D54 ; unget_filename_char
       CLC 
       RTS 
 
@@ -1683,13 +1950,16 @@ l64A8 CLC
       LDA #$1E
       SEC 
       RTS 
+;  .endif
 
-
+get_type
       LDY $618A
       STA $618A
       JMP $6E37
+get_access
       LDY $6189
       STA $6189
+get_end_mod
       TYA 
       PHA 
       JSR $6D58
@@ -1703,8 +1973,12 @@ l64A8 CLC
       LDA #$1E
       SEC 
       RTS 
-
-
+;
+; eat_zero_colon
+;   skips over <0><:>  iff present
+;
+;
+eat_zero_colon
       JSR $6D58
       BCS $6E66
       CPY #$3A
@@ -1719,7 +1993,15 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;************************************************************************
+;   PARSING   high level calls
+;************************************************************************
+;
+;
+;
+; parse_for_open
+;
+parse_for_open
       JSR $6D1D
       JSR $6D58
       BCS $6EA7
@@ -1751,7 +2033,19 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;************************************************************************
+;     NORMAL OPENS
+;************************************************************************
+;
+;
+;
+; open 1  = parse
+;   check for existence of file
+;   do all checking which is independent of access
+;
+; open 2  = type dependent checking & actual opens
+;
+open_channel_given_sa
       JSR $6638
       CMP #$0F
       BNE $6EB3
@@ -1819,6 +2113,69 @@ l64A8 CLC
       BNE $6F3C
       JMP $6FEB
       JMP $7010
+ ;
+; access request
+;  replace_request
+;   wild present
+;    type request
+;     found_flag
+; r1--- error syntax ( replace and read access incompat )
+; r0--0 error file not found
+; r0-s1 open for sequential
+; r0-p1 open prog for read
+; r0-l1 open rel for read
+; r1--- error syntax ( replace and read access incompat )
+; r0--0 error file not found
+; r0-s1 open for sequential
+; r0-p1 open prog for read
+; r0-l1 open rel for read
+;
+; access request
+;  replace_request
+;   wild present
+;    type request
+;     found_flag
+; f-1-- error syntax ( illegal wild cards )
+; f-0$- error syntax ( not on directory file , file_type_mismatch )
+; f-0L- error syntax ( not on rel files, file type mismatch )
+; f-0s0 open new seq file using open2_write
+; f-0p0 open new prg file using open2_write
+; f00s1 open existing seq file using open2_read
+; f00p1 open existing prg file using open2_read
+; f10s1 open existing seq file using open2_write
+; f10p1 open existing prg file using open2_write
+; 
+;
+; access request
+;  replace_request
+;   wild present
+;    type request
+;     found_flag
+; w-000 open seq file for write new
+; w-0s0 open seq file for write new
+; w-0p0 open prg file for write new
+; w-0l0 open rel file for write new
+; w1001 open seq file for write ( delete old )
+; w10s1 open seq file for write ( delete old )
+; w10p1 open prg file for write ( delete old )
+; w10l1 open rel file for write ( delete old )
+; w-!-- error illegal use of wild cards
+; w00-1 error file exists
+;
+; w-!-- error illegal use of wild cards
+; w00-1 error file exists
+; w-000 open seq file for write new
+; w-0s0 open seq file for write new
+; w-0p0 open prg file for write new
+; w-0l0 open rel file for write new
+; w1001 open seq file for write ( delete old )
+; w10s1 open seq file for write ( delete old )
+; w10p1 open prg file for write ( delete old )
+; w10l1 open rel file for write ( delete old )
+;
+; open2_read  directory_block is current_block
+;
+open2_read     
       LDA #$1E
       LDX $618C
       BNE $6FB0
@@ -1849,6 +2206,9 @@ l64A8 CLC
       STA $6111
       LDA $6007
       STA $611A
+;
+;  .ifdef rel_flag
+;
       LDA $6005
       LDX $6006
       STA $6118
@@ -1859,6 +2219,10 @@ l64A8 CLC
       STX $6116
       STA $6117
       STA $6114
+;
+;  .endif
+;
+;
       LDA $6189
       STA $610B
       STA $6002
@@ -1869,7 +2233,7 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+open2_append
       LDA #$57
       STA $6189
       LDX $618E
@@ -1893,11 +2257,11 @@ l64A8 CLC
       CLC 
       RTS 
 
-
       SEC 
       RTS 
 
-
+;  .ifdef position_flag
+open2_fast
       LDA #$21
       LDX $618B
       BNE $700E
@@ -1910,7 +2274,6 @@ l64A8 CLC
       SEC 
       RTS 
 
-
       LDA $618E
       BEQ $7010
       LDA $618C
@@ -1918,8 +2281,11 @@ l64A8 CLC
       JMP $6F3F
       SEC 
       RTS 
+;
+;  .endif
+;
 
-
+open2_write
       LDA #$21
       LDX $618B
       BEQ $701A
@@ -1952,9 +2318,13 @@ l64A8 CLC
       BPL $7057
       LDA $618A
       STA $6003
+;
+;  .ifdef rel_flag      
       LDA $618D
       STA $6007
       STA $611A
+;  .endif
+;
       LDA #$00
       LDX #$00
       STA $6000
@@ -1966,6 +2336,9 @@ l64A8 CLC
       LDA $6189
       STA $6002
       STA $610B
+;
+;       if rel file, end_record is already cleared 
+;
       CLC 
       RTS 
 
@@ -1973,7 +2346,8 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+;  .ifdef rel_flag
+open2_rel
       LDA #$4C
       STA $6189
       STA $618A
@@ -2000,8 +2374,14 @@ l64A8 CLC
       LDA #$32
       SEC 
       RTS 
-
-
+;
+;  .endif
+;
+;************************************************************************
+;     CLOSE CHANNEL
+;************************************************************************
+;
+close_all_channels
       LDX #$10
       TXA 
       PHA 
@@ -2014,16 +2394,19 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+close_channel_given_sa_user   ;<4.2 fab>
       LDA $B9
       AND #$0F
       CMP #$0F
       BEQ $70D1
+close_channel_given_sa
       JSR $6638
+close_channel_default
       LDA $6108
       LDX $610B
+;     if  not open
       BEQ $7141
-      CMP #$0F
+      CMP #$0F    ; if  not command channel or dir file
       BEQ $713C
       CPX #$24
       BEQ $713C
@@ -2050,6 +2433,8 @@ l64A8 CLC
       LDX $6119
       STA $6005
       STX $6006
+;  .endif
+;
       LDA #$00
       STA $6002
       LDA #$00
@@ -2057,7 +2442,17 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+;************************************************************************
+;   COMMAND CHANNEL OPEN AND WRITE
+;************************************************************************
+;
+;
+command_len_max = 40  ;max length of command
+;  ram command_len   length of command
+;  ram command,41    actual command text
+;
+;
+command_channel_open
       LDA #$0F
       JSR $6638
       LDA #$57
@@ -2078,12 +2473,14 @@ l64A8 CLC
       STA $6293,Y
       DEY 
       BPL $7160
+      
+command_clear_and_interpret
       JSR $71FB
       LDX #$00
       STX $6292
       RTS 
 
-
+cleanup_command_write
       CLC 
       ADC $6292
       STA $6292
@@ -2093,7 +2490,7 @@ l64A8 CLC
       JSR $6567
       RTS 
 
-
+command_channel_write
       LDY $6120
       LDA #$28
       SEC 
@@ -2129,6 +2526,19 @@ l64A8 CLC
       TYA 
       CLC 
       JMP $7AE2
+;************************************************************************
+;   COMMAND DISPATCH
+;************************************************************************
+; commands:
+;   Rename<0<:>>filename=<0<:>>filename
+;   Copy<0<:>>filename=<0<:>>filename
+;   Scratch<0<:>>filename
+;   New<0<:>>filename,idh     <4.1 fab>
+;   Initialize<0<:>>
+;   Validate<0<:>>
+;   P<96+channel_number><record_low><record_high><offset>
+;   Uxxxx
+;
       !byte $53, $72
       AND $7252,X
       CMP $7243,X
@@ -2144,7 +2554,7 @@ l64A8 CLC
       INC $FF
       RTS 
 
-
+interpret_command
       JSR $655F
       JSR $6D1D
       JSR $6D3A
@@ -2167,7 +2577,6 @@ l64A8 CLC
       SEC 
       RTS 
 
-
       TXA 
       CMP ($FE),Y
       BNE $7218
@@ -2181,18 +2590,25 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+eat_until_colon
       JSR $6D58
       BCS $723C
       CPY #$3A
-      BNE $7233
+      BNE eat_until_colon
       CLC 
       RTS 
 
-
+;************************************************************************
+;   COMMANDS
+;************************************************************************
+;
+;  ram scratch_cntr,2
+;
+scratch_command
       JSR $7233
       JSR $6D9D
       BCS $7271
+;     no need to consider rest of filename
       LDA #$00
       LDX #$00
       STA $62BC
@@ -2244,6 +2660,7 @@ l64A8 CLC
       BCS $728A
       LDA $62C0
       JMP $663F
+validate_command
       JSR $70D1
       JSR $655F
       JSR $6CB0
@@ -2255,7 +2672,7 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+new_command       ;<4.1 fab>  added routine
       LDA $6100
       LDX $6101
       STA $6102
@@ -2263,7 +2680,7 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+rename_command
       JSR $73E7
       BCS $72F0
       LDX #$FF
@@ -2278,7 +2695,7 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+copy_command
       JSR $73E7
       BCS $7370
       LDA $6000
@@ -2339,11 +2756,17 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+uj_command
+ui_command
+ucolon_command
       JSR $70D1
       JMP $655C
+      
+init_command
       JSR $70D1
       JMP $655F
+
+u_command
       JSR $6D58
       BCS $739E
       CPY #$3A
@@ -2360,6 +2783,7 @@ l64A8 CLC
       BNE $739E
       CLC 
       BIT $38
+set_unit_or_bitch
       BCS $73B2
       JSR $6D58
       BCS $73B2
@@ -2373,7 +2797,7 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+m_command
       JSR $6D58
       JSR $6D58
       BCS $73E3
@@ -2396,6 +2820,20 @@ l64A8 CLC
       CLC 
       BIT $38
       JMP $739F
+      
+;************************************************************************
+;   "PARSE FOR RENAME/COPY"
+;************************************************************************
+;
+; does parsing. copys first filename to alt_filename
+;     verifys that first does not exist.
+;     parse second file name
+;     verifies that file does exist.
+;     returns with current channel pointing to default block
+;
+;
+;
+parse_for_rename_copy
       JSR $7233
       JSR $6D9D
       BCS $742B
@@ -2427,7 +2865,24 @@ l64A8 CLC
       SEC 
       RTS 
 
-
+;************************************************************************
+;   READ DIRECTORY FOR USER
+;************************************************************************
+;
+;
+;  ram dir_line,50
+;
+; directory open
+;   entry:  parse for open called
+;     filename = filename
+;     filetype = filetype
+;     parse_access = $
+;     end byte in file not checked
+;     default channel is users channel
+;
+;
+;
+directory_open
       LDA #$24
       STA $610B
       JSR $663D
@@ -2441,12 +2896,13 @@ l64A8 CLC
       LDA #$2A
       STA $6177
       JMP $74FB
+directory_cleanup
       CLC 
       ADC $610E
       STA $610E
       RTS 
 
-
+directory_read
       JSR $663D
       LDY $610E
       CPY $6111
@@ -2476,6 +2932,18 @@ l64A8 CLC
       LDY $62F6
       SEC 
       JMP $7AE2
+;
+;
+;
+; directory_format_next_line
+;
+;   entry:  current channel is directory channel
+;     filename is set up
+;   exit: c=0 operation is ok
+;     c=1 EOF return one null to user
+;
+;
+directory_format_next_line
       LDA $610F
       ORA $6110
       BNE $74AE
@@ -2518,7 +2986,7 @@ l64A8 CLC
       CLC 
       RTS 
 
-
+format_first_line
       LDX #$20
       STX $6111
       DEX 
@@ -2891,7 +3359,24 @@ do_load
       CLC 
       RTS 
 
-
+;*****************************************************************************
+;     DIRECTORY_LOAD
+;*****************************************************************************
+;
+;
+; DIRECTORY_LOAD
+;   entry:
+;     sa  =0  memuss = loading address
+;       <>0 load at address specified by file
+;     verck   = 0 load
+;       <> 0  vefify only
+;     ba  destination bank
+;
+;   exit: c=0 load completed
+;     c=1 verck <> 0  verify error
+;     c=1 verck = 0 out of mem error ( $ff00 )
+;
+directory_load
       JSR $F5D2
       JSR $742D
       LDA $C3
@@ -2934,6 +3419,26 @@ do_load
       STA $DF02
       STX $DF03
       JMP $7708
+      
+;********************************************************************
+;     SAVE
+;********************************************************************
+;
+; enrty
+;   (y,x) eal ending address of area to save
+;   (@a)  stal  starting address of area to save
+;   ba    bank source
+;
+;
+;rsave  lda fa      ; save
+; fa_cmp a
+; beq 10$
+; continue save
+;10$  abs_ref jsr,swap_disk
+; jmp disk_load
+;
+; 
+disk_save_1
       LDA #$00
       STA $90
       JSR $7A65
@@ -3063,8 +3568,12 @@ do_load
       JSR $66D4
       CLC 
       RTS 
-
-
+      
+;****************************************************************************
+;   FIRST_DISK_ROUTINES
+;****************************************************************************
+;
+disk_io
       JSR $7A7F
       STX $62F5
       STY $62F6
@@ -3077,16 +3586,21 @@ do_load
       JMP $6788
       JSR $7A7F
       JMP $79BD
+disk_close
+      ;.ifdef rel_flag
+      ; bcc disk_ckout
+      ;.endif
       BCC $78FC
       JSR $7A7F
       TXA 
       JSR $F2F2
       JSR $70E2
       JMP $79A3
+disk_open_nmi
       JSR $7A7F
       STA $6120
       BCS $791C
-      JMP $79ED
+      JMP $79ED   ; disk_run_stop_restore
       LDA $BA
       CMP $6122
       BEQ $7931
@@ -3096,6 +3610,7 @@ do_load
       PHA 
       LDA $6120
       JMP $79BD
+disk_open
       LDA $BA
       PHA 
       LDA #$00
@@ -3107,9 +3622,10 @@ do_load
       TYA 
       !byte $b0, $7B
       LDA $BA
-      STA $0263,X
+      STA fat,X
       JSR $6EA9
       JMP $79A3
+disk_load_save
       PHP 
       PHA 
       JSR $7A7F
@@ -3132,24 +3648,31 @@ do_load
       PHA 
       LDA $6120
       JMP $79BD
+disk_load_save_2
       PLA 
       PLP 
       BCS $7983
       JMP $762D
+disk_save
       JSR $77D9
       JMP $79A3
+disk_system_return_eof_timeout
       LDA #$42
       STA $90
       LDA #$00
       JMP $79B6
+disk_system_return_error
       SEC 
       BCS $79A3
+disk_system_return_cr_eof
       LDA #$0D
       BIT $00A9
+disk_system_return_eof
       STA $6120
       LDA #$FF
       STA $611F
       CLC 
+disk_system_return
       BCC $79B0
       ROL $611F
       JSR $6567
@@ -3159,7 +3682,8 @@ do_load
       LDA $6120
       LDX $62F5
       LDY $62F6
-      CLC 
+      CLC
+disk_direct_return 
       STA $6120
       LDA $6121
       PHA 
@@ -3176,7 +3700,7 @@ do_load
       LDA $6120
       RTS 
 
-
+eof_check
       LDA $611F
       BEQ $79E5
       LDA #$40
@@ -3186,7 +3710,7 @@ do_load
       STA $611F
       RTS 
 
-
+disk_run_stop_restore
       JSR $FF8A
       JSR $7D2E
       LDA #$FE
@@ -3199,7 +3723,16 @@ do_load
       PHA 
       RTS 
 
-
+;****************************************************************************
+;   REMOTE DMA ROUTINES
+;****************************************************************************
+;
+;  ram stack_restore_registers_dma_op
+;
+; read_users_filename
+;   dmas system filename into ram at remote_filename_buffer
+;
+read_users_filename
       LDA $BB
       LDX $BC
       STA $DF02
@@ -3207,8 +3740,6 @@ do_load
       LDA $B7
       BNE $7A10
       RTS 
-
-
       STA $DF07
       LDA #$00
       STA $DF08
@@ -3224,7 +3755,35 @@ do_load
       PHA 
       LDA #$AF
       PHA 
-      JMP $7A37
+      JMP stack_restore_registers
+;
+;       call restore dma registers
+;       call downloaded code
+;       call swap_disk
+;       return
+;
+;
+; stack_restore_registers
+;
+;   call this routine.
+;   when returned, the next return you perform will:
+;     restore the dma registers
+;     restore x,a to value at entry
+;     perform an rts
+;
+;
+;   entry:  routine is jsred too
+;     .x,.a = x,a registers for return after restore reg
+;     dma registers are setup for transfer
+;
+;   exit: x,a stacked
+;     dma registers are stacked for restore registers
+;     call to restore registers is stacked
+;     y preserved
+;
+;
+;
+stack_restore_registers
       PHA 
       TXA 
       PHA 
@@ -3250,12 +3809,14 @@ do_load
       CLC 
       RTS 
 
-
+saving
       LDA #$8E
       LDX #$F6
       JMP $7A70
+luking
       LDA #$AE
       LDX #$F5
+remote_call
       TAY 
       LDA $6121
       PHA 
@@ -3266,6 +3827,25 @@ do_load
       TYA 
       PHA 
       JMP $79BD
+      
+;****************************************************************************
+;     FASTOP ROUTINES
+;****************************************************************************
+;
+; .byte <fastop     ; fast op code start
+; .byte <fastop_sa_loc    ; sa location for fastop
+; .byte <fastop_dmaop_loc   ; dma_op code 
+; .byte <fastop_dma_destination ; low order address of dma_cpu_addr
+; .byte <fastop_cntr    ; counter for fastop cycles
+; .byte <bsout_fastop_loc   ; opcode for bit or jsr routines, bsout
+; .byte <basin_fastop_loc   ; opcode for bit or jsr routines, basin
+;
+;
+;  ram fastop_max
+;
+;
+;
+cleanup_fastop_pntr
       PHP 
       PHA 
       LDA $FE
@@ -3305,6 +3885,25 @@ do_load
       PLP 
       RTS 
       JMP ($6109)
+      
+;
+;
+; return_setup_fastop
+;   swaps disk, and sets up fastop before returning to user
+;   does a rts to user with fastop set up
+; return_execute_fastop
+;   swaps disk, and executes a fastop before returning to user
+; 
+;   entry:  dma_disk_bank,dma_disk_addr set up
+;     cleanup vector pointed to correct cleanup routine.
+;     a = number of bytes to fastop
+;     c = 0 writeing to disk
+;     c = 1 reading from disk
+;     sa = set up for current channel
+;   exit:
+;     control returned to users routine
+;
+io_fastop
       STA $6109
       STX $610A
       LDA $610F
@@ -3315,6 +3914,7 @@ do_load
       STA $DF04
       TYA 
       BCC $7AF5
+return_execute_fastop
       TAX 
       LDA $6121
       PHA 
@@ -3326,12 +3926,14 @@ do_load
       PHA 
       TXA 
       JMP $7AFE
+return_setup_fastop
       TAX 
       LDA $6121
       PHA 
       LDA #$E8
       PHA 
-      TXA 
+      TXA
+return_execute_fastop_entry  
       STA $62F8
       LDA #$00
       STA $FE
@@ -3462,20 +4064,43 @@ do_load
       STA d2icr
       LDY d2icr
       BMI $7C93
-      JSR $F6BC
-      JSR $FFE1
+      JSR $F6BC   ; set up kybd
+      JSR $FFE1   ; stop key
       BEQ $7C96
-      JMP $FE72
+      JMP $FE72   ; fake_nmi
       CLC 
       BIT $38
       JSR $7CAD
-      JMP $7911
+      JMP $7911   ; disk_open_nmi
+;
+;
+;
+;***********************************************************************
+;     GET_DISK
+;***********************************************************************
+;
+; 
+; swap table
+;   contains dma register contents for a normal swap.
+;   table must be in reverse order due to perverse method
+;   of saving bytes....
+;
+swap_table
       !byte $00,$00,$1F,$FF,$00,$00,$00
       RTS 
       !byte $00, $B2
+swap_table_end
+;
+;
+;
+; swap_disk
+;   swaps disk and preserves a,x,y, and carry
+;
+facmp_swap      ; ( kludges to save bytes ) 
       EOR #$09
       BNE $7CC8
       JSR $7CF0
+swap_disk
       PHA 
       TXA 
       PHA 
@@ -3484,6 +4109,9 @@ do_load
       PHA 
       DEX 
       BPL $7CB5
+;
+;
+restore_registers
       LDX #$09
       PLA 
       STA $DF01,X
@@ -3491,10 +4119,11 @@ do_load
       BPL $7CBE
       PLA 
       TAX 
-      PLA 
+      PLA
+facmp_rts 
       RTS 
 
-
+fastop_slow
       JSR $7CF0
       STA $7CE7
       LDA $B9
@@ -3509,21 +4138,55 @@ do_load
       LDA #$B1
       STA $DF01
       LDA #$00
-      CLC 
+      CLC
+;
+;  .ifdef c64
+;
+fast 
       PHA 
       INC d1ddrb
       CLI 
       PLA 
       RTS 
 
-
+slow
       PHA 
       SEI 
       LDA #$00
       STA vicspeed
       DEC d1ddrb
       PLA 
-      RTS 
+      RTS
+;  .else
+;
+;fast  inc d1ddrb    enable stop routine
+;  pha     carry must be preserved
+;
+;vicspeed_restore = *+1
+;  lda #0      speed variable name
+;  cli     enable irqs
+;speed_return
+;  sta vicspeed    restore vic speed
+;  pla     
+;fastop_fake_rts
+;  rts     return
+;
+;slow  pha     save .a
+;  sei     kill interupts
+;  lda vicspeed    save current speed
+;  abs_ref sta,vicspeed_restore
+;  dec d1ddrb    disable the stop routine
+;  lda #0      go slow vic, and return
+;  beq speed_return
+;
+;  .endif     
+
+;
+; for all indirects:
+;   this macro calls is arguement as a macro.
+;   the first arg in all these calls is the indirect symbol
+;
+;
       ROL A
       BIT $26
       ASL $1A20,X
@@ -3608,8 +4271,8 @@ install_vectors
 ;
 ;     
 ;      
-l7d99 LDA #$08
-      LDX #$CF
+l7d99 LDA #default_unit_number
+      LDX #default_interface_page
 l7d9d CLD 
       PHA 
       TXA 
@@ -3656,8 +4319,8 @@ l7d9d CLD
 ;
 ;      
 
-l7dde LDA #$08
-      LDX #$CF
+l7dde LDA #default_unit_number
+      LDX #default_interface_page
 l7de2 CLD 
       PHA 
       TXA 
