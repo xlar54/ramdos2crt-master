@@ -519,8 +519,8 @@ l64A8 CLC
 
       LDA #$A8
       LDX #$64
-      STA $6109
-      STX $610A
+      STA cleanup_vector
+      STX cleanup_vector + 1
       LDA #$37
       LDX #$01
       CLC 
@@ -594,8 +594,8 @@ l64A8 CLC
       TAX 
       JMP $656E
       TAY 
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       JSR $6580
       LDA $6135
       JSR $65A6
@@ -723,7 +723,7 @@ select_channel_a
       LDX #$61
       STA $DF02
       STX $DF03
-      LDA $6107
+      LDA channel_blocks + 1
       JSR $7EB0
       LDA #$10
       LDX #$00
@@ -747,7 +747,7 @@ select_channel_a
       LDA $668D,X
       STA $DF04
       LDA $668E,X
-      ADC $6106
+      ADC channel_blocks
       STA $DF05
       STY $DF01
       RTS 
@@ -772,11 +772,11 @@ select_channel_a
       BEQ $66AD
       !byte $00, $01, $8D, $0f, $61, $8E
       BPL $6716
-      LDA $610F
-      LDX $6110
-      CPX $611C
+      LDA current_block
+      LDX current_block + 1
+      CPX default_block + 1
       BNE $66C3
-      CMP $611B
+      CMP default_block
       BEQ access_block_ret
       PHA 
       TXA 
@@ -785,14 +785,14 @@ select_channel_a
       PLA 
       TAX 
       PLA 
-      STA $611B
-      STX $611C
+      STA default_block
+      STX default_block + 1
 unflush_block   ; read the new default block in.
       LDY #$B1
       BIT $B0A0
       JSR $66ED
-      LDA $611B
-      LDX $611C
+      LDA default_block
+      LDX default_block + 1
       STA $DF05
       JSR $7EB7
       STY $DF01
@@ -836,9 +836,9 @@ read_byte_default_cleanup
       ADC $610E
       STA $610E
       BCC $6736
-      INC $610F
+      INC current_block
       BNE $6736
-      INC $6110
+      INC current_block + 1
       JSR $66D4
       RTS 
 ;
@@ -861,10 +861,10 @@ read_byte_default
       SBC $610E
       TAY 
       LDA $6112
-      SBC $610F
+      SBC current_block
       TAX 
       LDA $6113
-      SBC $6110
+      SBC current_block + 1
       BCS $676B
       JMP $7989
       BNE $6770
@@ -909,10 +909,10 @@ write_byte_given_sa
       CLC 
       ADC $610E
       STA $610E
-      LDX $6110
+      LDX current_block + 1
       CPX $6113
       BNE $67C0
-      LDX $610F
+      LDX current_block
       CPX $6112
       BNE $67CA
       CMP $6111
@@ -920,9 +920,9 @@ write_byte_given_sa
       STA $6111
       INC $610E
       BNE $67D7
-      INC $610F
+      INC current_block
       BNE $67D7
-      INC $6110
+      INC current_block + 1
       JMP $66D4
 ;
 ;
@@ -956,10 +956,10 @@ write_byte_default
 write_byte_immediate
 ;       while current_byte > end_byte
       LDA $6113
-      CMP $6110
+      CMP current_block + 1
       BNE $6811
       LDA $6112
-      CMP $610F
+      CMP current_block
       BNE $6811
       LDA $6111
       CMP $610E
@@ -967,8 +967,8 @@ write_byte_immediate
       LDA $6111
       CMP #$FF
       BNE $6858
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       PHA 
       TXA 
       PHA 
@@ -983,15 +983,15 @@ write_byte_immediate
       PLA 
       TAX 
       PLA 
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       TYA 
       BCS $6889
       INC $6112
       BNE $6847
       INC $6113
-      LDA $610C
-      LDX $610D
+      LDA directory_block
+      LDX directory_block + 1
       JSR $66BB
       INC $6000
       BNE $6858
@@ -1010,9 +1010,9 @@ write_byte_immediate
       STA $6000,Y
       INC $610E
       BNE $6888
-      INC $610F
+      INC current_block
       BNE $6888
-      INC $6110
+      INC current_block + 1
       CLC 
       RTS 
 
@@ -1098,14 +1098,14 @@ access_record
       STA $610E
       LDA #$00
       LDX #$00
-      ADC $610C
+      ADC directory_block
       PHA 
       TXA 
-      ADC $610D
+      ADC directory_block + 1
       TAX 
       PLA 
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       LDY $610B
       CPY #$46
       BNE $68C4
@@ -1117,8 +1117,8 @@ access_record
       TAX 
       PLA 
       BCS $68C1
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       LDA #$34
       RTS 
 
@@ -1137,11 +1137,11 @@ access_record
       ADC $610E
       STA $610E
       LDA $6171
-      ADC $610F
-      STA $610F
+      ADC current_block
+      STA current_block
       LDA $6172
-      ADC $6110
-      STA $6110
+      ADC current_block + 1
+      STA current_block + 1
       ASL $6170
       ROL $6171
       ROL $6172
@@ -1255,9 +1255,9 @@ scan_record
       STA $6117
       INC $610E
       BNE $69CB
-      INC $610F
+      INC current_block
       BNE $69CB
-      INC $6110
+      INC current_block + 1
       INC $6114
       BNE $69A5
       PLA 
@@ -1313,8 +1313,8 @@ cleanup_read_byte_rel
 read_byte_rel
       LDA #$04
       LDX #$6A
-      STA $6109
-      STX $610A
+      STA cleanup_vector
+      STX cleanup_vector + 1
       JSR $6994
       BCS $6A2D
       JSR $688A
@@ -1340,8 +1340,8 @@ write_byte_rel
       BNE $6A69
       LDA #$EA
       LDX #$69
-      STA $6109
-      STX $610A
+      STA cleanup_vector
+      STX cleanup_vector + 1
       LDX $6116
       CPX $6119
       BNE $6A61
@@ -1370,8 +1370,8 @@ rel_fastop
       JSR $66D7
       LDA $610E
       STA $DF04
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       STA $DF05
       JSR $7EB7
       PLA 
@@ -1457,15 +1457,15 @@ position_command
 grow_disk
       STA $6173
       STX $6174
-      LDA $6102
-      LDX $6103
+      LDA disk_end
+      LDX disk_end + 1
       CLC 
       ADC #$01
       BNE $6B2C
       INX 
-      CPX $6105
+      CPX disk_max + 1
       BNE $6B34
-      CMP $6104
+      CMP disk_max
       BCC $6B39
       LDA #$48
       RTS 
@@ -1487,7 +1487,7 @@ grow_disk
       JSR $7EB7
       CPX $6103
       BNE $6B68
-      CMP $6102
+      CMP disk_end
       BCS $6B72
       LDA #$B2
       STA $DF01
@@ -1512,26 +1512,26 @@ adjust_pointers
       JSR $6BD1
       STA $6112
       STX $6113
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       JSR $6BD1
-      STA $610F
-      STX $6110
-      LDA $610C
-      LDX $610D
+      STA current_block
+      STX current_block + 1
+      LDA directory_block
+      LDX directory_block + 1
       JSR $6BD1
-      STA $610C
-      STX $610D
+      STA directory_block
+      STX directory_block + 1
       LDX $6108
       DEX 
       BPL $6B80
       PLA 
       JSR $663F
-      LDA $6102
-      LDX $6103
+      LDA disk_end
+      LDX disk_end + 1
       JSR $6BD1
-      STA $6102
-      STX $6103
+      STA disk_end
+      STX disk_end + 1
       CLC 
       RTS 
 ;
@@ -1558,8 +1558,8 @@ adjust_pointer
 ;     entry:  data page has directory block on it
 ;
 delete_file
-      LDA $611B
-      LDX $611C
+      LDA default_block
+      LDX default_block + 1
       STA $6173
       STX $6174
       LDA $6000
@@ -1593,15 +1593,15 @@ delete_file
       JSR $66BB
       LDA $6173
       LDX $6174
-      STA $611B
-      STX $611C
+      STA default_block
+      STX default_block + 1
       INC $6173
       BNE $6C3E
       INC $6174
       LDA $6103
       CMP $6174
       BNE $6C4C
-      LDA $6102
+      LDA disk_end
       CMP $6173
       BCS $6C16
       RTS 
@@ -1634,11 +1634,11 @@ exptab
 ;   find_nth_matching_file
 ; 
       !byte $80,$20,$3D,$66,$AD,$00,$61,$AE,$01,$61
-      STA $610F
-      STX $6110
-      CPX $6103
+      STA current_block
+      STX current_block + 1
+      CPX disk_end + 1
       BNE $6C80
-      CMP $6102
+      CMP disk_end
       BCC $6C8B
       BEQ $6C87
       LDA #$0D
@@ -1651,31 +1651,31 @@ exptab
       BCS $6C89
       JSR $6CF6
       BCS $6C9C
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       RTS 
 
 
       LDA $6000
       LDX $6001
       SEC 
-      ADC $610F
+      ADC current_block
       PHA 
       TXA 
-      ADC $6110
+      ADC current_block + 1
       TAX 
       PLA 
       JMP $6C72
       
 find_open_file      
       JSR $663D
-      LDA $6100
-      LDX $6101
-      STA $610F
-      STX $6110
-      CPX $6103
+      LDA first_block
+      LDX first_block + 1
+      STA current_block
+      STX current_block + 1
+      CPX disk_end + 1
       BNE $6CC7
-      CMP $6102
+      CMP disk_end
       BCC $6CD2
       BEQ $6CCE
       LDA #$0D
@@ -1687,8 +1687,8 @@ find_open_file
       JSR $66B5
       LDA $6002
       BEQ $6CE2
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       CLC 
       RTS 
 
@@ -1696,10 +1696,10 @@ find_open_file
       LDA $6000
       LDX $6001
       SEC 
-      ADC $610F
+      ADC current_block
       PHA 
       TXA 
-      ADC $6110
+      ADC current_block + 1
       TAX 
       PLA 
       JMP $6CB9
@@ -2078,8 +2078,8 @@ open_channel_given_sa
       PLA 
       TAX 
       PLA 
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       JSR $66B5
       BCS $6F14
       LDA #$3C
@@ -2185,12 +2185,12 @@ open2_read
       JSR $66B5
       BCS $6FB0
       JSR $6638
-      LDA $611B
-      LDX $611C
-      STA $610C
-      STX $610D
-      STA $610F
-      STX $6110
+      LDA default_block
+      LDX default_block + 1
+      STA directory_block
+      STX directory_block + 1
+      STA current_block
+      STX current_block + 1
       CLC 
       ADC $6000
       PHA 
@@ -2247,13 +2247,13 @@ open2_append
       STA $610E
       LDA $6112
       LDX $6113
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       INC $610E
       BNE $6FE7
-      INC $610F
+      INC current_block
       BNE $6FE7
-      INC $6110
+      INC current_block + 1
       CLC 
       RTS 
 
@@ -2299,12 +2299,12 @@ open2_write
       JSR $6BE7
       JSR $6638
       JSR $662D
-      LDA $6102
-      LDX $6103
-      STA $610F
-      STX $6110
-      STA $610C
-      STX $610D
+      LDA disk_end
+      LDX disk_end + 1
+      STA current_block
+      STX current_block + 1
+      STA directory_block
+      STX directory_block + 1
       STA $6112
       STX $6113
       JSR $6B1A
@@ -2410,10 +2410,10 @@ close_channel_default
       BEQ $713C
       CPX #$24
       BEQ $713C
-      LDA $610C
-      LDX $610D
-      STA $610F
-      STX $6110
+      LDA directory_block
+      LDX directory_block + 1
+      STA current_block
+      STX current_block + 1
       JSR $66B5
       BCS $7142
       LDA $6111
@@ -2421,10 +2421,10 @@ close_channel_default
       LDA $6112
       LDX $6113
       SEC 
-      SBC $610C
+      SBC directory_block
       PHA 
       TXA 
-      SBC $610D
+      SBC directory_block + 1
       TAX 
       PLA 
       STA $6000
@@ -2511,8 +2511,8 @@ command_channel_write
       TAY 
       LDA #$72
       LDX #$71
-      STA $6109
-      STX $610A
+      STA cleanup_vector
+      STX cleanup_vector + 1
       LDA #$93
       LDX #$02
       CLC 
@@ -2621,8 +2621,8 @@ scratch_command
       RTS 
 
 
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       JSR $727C
       INC $62BC
       BNE $726C
@@ -2645,9 +2645,9 @@ scratch_command
       BEQ $72AC
       LDA $62BE
       LDX $62BF
-      CPX $610D
+      CPX directory_block + 1
       BNE $729D
-      CMP $610C
+      CMP directory_block
       BNE $72AC
       LDA $6108
       CMP $62C0
@@ -2673,10 +2673,10 @@ validate_command
       RTS 
 
 new_command       ;<4.1 fab>  added routine
-      LDA $6100
-      LDX $6101
-      STA $6102
-      STX $6103
+      LDA first_block
+      LDX first_block + 1
+      STA disk_end
+      STX disk_end + 1
       CLC 
       RTS 
 
@@ -2701,46 +2701,46 @@ copy_command
       LDA $6000
       LDX $6001
       SEC 
-      ADC $6102
+      ADC disk_end
       PHA 
       TXA 
-      ADC $6103
+      ADC disk_end + 1
       TAX 
       PLA 
-      CPX $6105
+      CPX disk_max + 1
       BNE $7310
-      CMP $6104
+      CMP disk_max
       BEQ $7314
       BCS $736E
       STA $62C1
       STX $62C2
-      LDA $6102
-      LDX $6103
+      LDA disk_end
+      LDX disk_end + 1
       PHA 
       TXA 
       PHA 
-      LDA $6102
-      LDX $6103
-      STA $611B
-      STX $611C
-      INC $610F
+      LDA disk_end
+      LDX disk_end + 1
+      STA default_block
+      STX default_block + 1
+      INC current_block
       BNE $7337
-      INC $6110
-      INC $6102
+      INC current_block + 1
+      INC disk_end
       BNE $733F
-      INC $6103
+      INC disk_end + 1
       JSR $66B5
       LDA $6103
       CMP $62C2
       BNE $7350
-      LDA $6102
+      LDA disk_end
       CMP $62C1
       BNE $7323
       PLA 
       TAX 
       PLA 
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       JSR $66BB
       LDX #$FF
       INX 
@@ -2888,8 +2888,8 @@ directory_open
       JSR $663D
       LDA #$00
       STA $610E
-      STA $610F
-      STA $6110
+      STA current_block
+      STA current_block + 1
       LDA $6177
       BNE $744D
       STA $6178
@@ -2913,8 +2913,8 @@ directory_read
       JMP $7989
       LDA #$50
       LDX #$74
-      STA $6109
-      STX $610A
+      STA cleanup_vector
+      STX cleanup_vector + 1
       LDA #$C3
       LDX #$02
       CLC 
@@ -2944,24 +2944,24 @@ directory_read
 ;
 ;
 directory_format_next_line
-      LDA $610F
-      ORA $6110
+      LDA current_block
+      ORA current_block + 1
       BNE $74AE
-      LDA $6100
-      LDX $6101
+      LDA first_block
+      LDX first_block + 1
       JMP $74D3
-      LDA $610F
-      LDX $6110
-      CPX $6103
+      LDA current_block
+      LDX current_block + 1
+      CPX disk_end + 1
       BNE $74BC
-      CMP $6102
+      CMP disk_end
       BCC $74BF
       RTS 
 
 
       JSR $66B5
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       SEC 
       ADC $6000
       PHA 
@@ -2969,11 +2969,11 @@ directory_format_next_line
       ADC $6001
       TAX 
       PLA 
-      STA $610F
-      STX $6110
-      CPX $6103
+      STA current_block
+      STX current_block + 1
+      CPX disk_end + 1
       BNE $74E1
-      CMP $6102
+      CMP disk_end
       BCC $74E9
       JSR $754A
       JMP $74F4
@@ -3024,13 +3024,13 @@ l754A LDX #end_last_line_text-last_line_text
       STA $62C3,X
       DEX 
       BPL $7550
-      LDA $6104
-      LDX $6105
+      LDA disk_max
+      LDX disk_max+1
       SEC 
-      SBC $6102
+      SBC disk_end
       PHA 
       TXA 
-      SBC $6103
+      SBC disk_end + 1
       TAX 
       PLA 
       STA $62C5
@@ -3231,8 +3231,8 @@ disk_load
       BEQ $76C6
       JSR $6C69
       BCS $76C6
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       JSR $66B5
       LDA #$40
       LDX $6003   ; dir_filetype
@@ -3286,8 +3286,8 @@ do_load
       STX $DF03
       LDY #$1C
       STY $DF04
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       STA $DF05
       JSR $7EB7
       SEC 
@@ -3453,8 +3453,8 @@ disk_save_1
       BEQ $7827
       JSR $6C69
       BCS $781F
-      STA $610F
-      STX $6110
+      STA current_block
+      STX current_block + 1
       JSR $66B5
       LDA #$3F
       LDX $618C
@@ -3474,11 +3474,11 @@ disk_save_1
       RTS 
 
 
-      LDA $6102
-      LDX $6103
-      CPX $6105
+      LDA disk_end
+      LDX disk_end + 1
+      CPX disk_max + 1
       BNE $7837
-      CMP $6104
+      CMP disk_max
       BCC $783D
       LDA #$48
       SEC 
@@ -3538,8 +3538,8 @@ disk_save_1
       LDX $C2
       STA $DF02
       STX $DF03
-      LDA $610F
-      LDX $6110
+      LDA current_block
+      LDX current_block + 1
       STA $DF05
       JSR $7EB7
       LDA #$1C
@@ -3547,22 +3547,22 @@ disk_save_1
       LDA $6000
       LDX $6001
       SEC 
-      ADC $6102
+      ADC disk_end
       PHA 
       TXA 
-      ADC $6103
+      ADC disk_end + 1
       TAX 
       PLA 
-      CPX $6105
+      CPX disk_max + 1
       BNE $78CC
-      CMP $6104
+      CMP disk_max
       BCC $78D1
       LDA #$48
       RTS 
 
 
-      STA $6102
-      STX $6103
+      STA disk_end
+      STX disk_end + 1
       LDY #$A0
       JSR $7A2A
       JSR $66D4
@@ -3884,7 +3884,7 @@ cleanup_fastop_pntr
       PLA 
       PLP 
       RTS 
-      JMP ($6109)
+      JMP (cleanup_vector)
       
 ;
 ;
@@ -3904,10 +3904,10 @@ cleanup_fastop_pntr
 ;     control returned to users routine
 ;
 io_fastop
-      STA $6109
-      STX $610A
-      LDA $610F
-      LDX $6110
+      STA cleanup_vector
+      STX cleanup_vector + 1
+      LDA current_block
+      LDX current_block + 1
       STA $DF05
       JSR $7EB7
       LDA $610E
@@ -4281,7 +4281,7 @@ l7d9d CLD
       LDX #$00
       LDA #$00
       STA $6000,X
-      STA $6100,X
+      STA first_block,X
       STA $6200,X
       INX 
       BNE $7DA8
@@ -4388,51 +4388,61 @@ l7de2 CLD
 ;
       LDA #$00
       LDX #$00
-      STA $611B
-      STX $611C
+      STA default_block
+      STX default_block + 1
       LDX #$00
-      TXA 
+l7E49 TXA 
       EOR #$5A
       STA data_block,X
       DEX 
-      BNE $7E49
-      JSR $66D7
-      INC $611C
-      BNE $7E52
-      LDX #$00
-      TXA 
+      BNE l7E49
+l7E52 JSR $66D7             ; flush data page to 256 possible banks
+      INC default_block + 1
+      BNE l7E52
+;
+l7E5A LDX #$00              ; do
+l7E5C TXA                   ; fill data block with different stuff
       EOR #$2C
       STA data_block,X
       DEX 
-      BNE $7E5C
-      JSR $66D7
-      INC $611C
-      BMI $7E80
-      JSR $66D4
-      LDX #$00
+      BNE l7E5C
+      JSR $66D7             ; flush_block
+      INC default_block + 1 ; point to next bank
+      ;BMI l7E80             ; exit if > 128 banks
+      BEQ l7E80              ; exit if > 255 banks (16MB) <-----------------------------------
+      ;
+      JSR $66D4             ; unflush_block
+      LDX #$00              ; check for original stuff
 l40   TXA 
       EOR #$5A
-      CMP data_block,X
-      BNE $7E80
+      CMP data_block,X      ; if  different
+      BNE l7E80             ; break
       DEX 
       BNE l40
-      JMP $7E5A
-      LDA $611B
-      LDX $611C
-      STA $6104
-      STX $6105
-      LDX #$00
-      LDA #$20
-      STA $6106
-      STX $6107
-      LDA #$22
-      STA $6100
-      STX $6101
-      STA $6102
-      STX $6103
-      LDA #$29
-      STA $611B
-      STX $611C
+      JMP l7E5A             ; loop
+;
+l7E80 LDA default_block
+      LDX default_block + 1
+;
+;    set up major disk pointers based on size
+;
+      STA disk_max            ; mark end of disk
+      STX disk_max+1
+      LDX #$00                ; set up the major disk pointers
+      ;LDA #$20
+      LDA #>swapped_code_size+1
+      STA channel_blocks
+      STX channel_blocks + 1
+      ;LDA #$22
+      LDA #>swapped_code_size+3
+      STA first_block
+      STX first_block + 1
+      STA disk_end
+      STX disk_end + 1
+      ;LDA #$29
+      lda #>swapped_code_size+10
+      STA default_block
+      STX default_block + 1
       RTS 
 
 
