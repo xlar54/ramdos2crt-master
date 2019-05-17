@@ -1,0 +1,1 @@
+64tass -a ramdos_ii_crt.asm -o ramdos_ii_crt.bin
